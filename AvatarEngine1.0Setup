@@ -1,0 +1,48 @@
+Install OpenCV3.1/2.4.9
+ sample build command for 2.4.9:
+mkdir build
+   26  cd build
+   27  cmake -D CMAKE_BUILD_TYPE=Release/Debug -D CMAKE_INSTALL_PREFIX=/usr/local -D WITH_TBB=ON -D BUILD_NEW_PYTHON_SUPPORT=ON -D WITH_V4L=ON -D INSTALL_C_EXAMPLES=ON -D INSTALL_PYTHON_EXAMPLES=ON -D BUILD_EXAMPLES=ON -D WITH_QT=ON -D WITH_OPENGL=ON ..
+   28  make -j4
+ Command for 3.1.0:
+https://github.com/milq/scripts-ubuntu-debian/blob/master/install-opencv.sh
+-In cmake command..it might show some error for ippicv_linux_20151201.tgz package, download that package and replace it with existing one in the given path.
+
+Command for 3.2
+http://docs.opencv.org/trunk/d7/d9f/tutorial_linux_install.html
+Add following in cmake comman:
+ -DWITH_LAPACK=OFF
+ 
+ 
+Install Oracle Java using webupd8 ppa:
+https://launchpad.net/~webupd8team/+archive/ubuntu/java
+-set proxy to resolve ppa and SSL connection error.
+Download boost and libmysqlconn libraries for development. Also install libmysqlsppconn7
+   1  sudo apt-get install libmysqlcppconn7
+
+
+Install mysql client and server (preferably 5.6(Because it supports TIMESTAMP(6)(i.e. microseconds)
+  sudo apt-get install mysql-server-5.6
+
+locate my.cnf and make it listen to outside network.
+    3  sudo gedit /etc/mysql/my.cnf
+	http://www.cyberciti.biz/tips/how-do-i-enable-remote-access-to-mysql-database-server.html
+   4  /etc/init.d/mysql restart
+Setup Avatar_action table
++------------+---------------+------+-----+----------------------+--------------------------------+
+| Field      | Type          | Null | Key | Default              | Extra                          |
++------------+---------------+------+-----+----------------------+--------------------------------+
+| timestamp  | timestamp(6)  | NO   |     | CURRENT_TIMESTAMP(6) | on update CURRENT_TIMESTAMP(6) |
+| actioncode | varchar(20)   | YES  |     | NULL                 |                                |
+| text       | varchar(5000) | YES  |     | NULL                 |                                |
++------------+---------------+------+-----+----------------------+--------------------------------+
+3 rows in set (0.00 sec)
+
+Download Mary-tts and copy paste all jars from ~/marytts-5.1.2/lib folder on original machine
+Build the MaryDemo.cc code from the ~/Downloads/marytts-master/doc/examples/client/c++/ folder in original machine
+Run Maryserver:
+./marytts-server -Dserver=socket
+
+Build the avatarengine1.0 code with the relevant include files and linker libraries (mysqlcppconn,opencv,boost)
+
+

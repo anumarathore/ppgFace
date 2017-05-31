@@ -1,0 +1,289 @@
+#include "2DfaceRecognition.hpp"
+#include <iostream>
+using namespace std;
+using namespace cv;
+
+FaceRecognition::FaceRecognition()
+{
+
+	string filename = "bin/FaceRecogTest_Thresholds.xml";	
+	MODEL_FILE = name+"_FRModel.txt";
+	TRAIN_FEATURE_FILE = name + "_FRTrain.txt";
+	boost::filesystem::remove(TRAIN_FEATURE_FILE.c_str());
+	boost::filesystem::remove(MODEL_FILE.c_str());
+	cv::FileStorage fs(filename, cv::FileStorage::READ);
+	fs["known_threshold"] >> th_knwn;
+	fs["unknown_threshold"] >> th_uknwn;
+	fs.release();
+}
+void FaceRecognition::reset(int code)
+{
+	try{
+	//	cout << "code: " << code << endl;
+		if(code == 0)
+		{
+			cout << "Deleting trained files for subject" <<name<< endl;
+
+		MODEL_FILE = name+"_FRModel.txt";
+		TRAIN_FEATURE_FILE = name + "_FRTrain.txt";
+		boost::filesystem::remove(TRAIN_FEATURE_FILE.c_str());
+		boost::filesystem::remove(MODEL_FILE.c_str());
+
+}
+else
+{
+	cout<<"Clearing old testing files"<<endl;
+ 	TEST_FEATURE_FILE = "Results/"+name + "_Test.txt";	
+ cout<<"TEST_FEATURE_FILE : "<<TEST_FEATURE_FILE<<endl;
+ 	
+	OUTPUT_FILE = "Results/"+name + "_Output.txt";
+	 boost::filesystem::remove(TEST_FEATURE_FILE.c_str());
+	 boost::filesystem::remove(OUTPUT_FILE.c_str());
+}
+	}
+	catch (Exception &e)
+	{
+		cout<<"error removing files"<<endl;
+		cout << e.what() << endl;
+	}
+}
+
+
+void FaceRecognition::generate_features(Mat frame, string data, int label)
+	{
+		if (frame.channels() == 3) cvtColor(frame, frame, CV_BGR2GRAY);
+		Mat dst = Mat::zeros(frame.size(), CV_8UC1); // image after preprocessing
+		Mat lbp; // lbp image
+		frame.copyTo(dst);
+		vector<string> lbp_names;
+		lbp_names.push_back("Extended LBP"); // 0
+		lbp_names.push_back("Fixed Sampling LBP"); // 1
+		lbp_names.push_back("Variance-based LBP"); // 2
+		int lbp_operator = 0;
+		switch (lbp_operator) {
+		case 0:
+			lbp::ELBP(dst, lbp, radius, neighbors); // use the extended operator
+			break;
+		case 1:
+			lbp::OLBP(dst, lbp); // use the original operator
+			break;
+		case 2:
+			lbp::VARLBP(dst, lbp, radius, neighbors);
+			break;
+		}
+		Mat lbp_norm;
+		cv::normalize(lbp, lbp_norm, 0, bins - 1, NORM_MINMAX, CV_8UC1);
+		Mat hist = lbp::spatial_histogram(lbp_norm, bins, gridx, gridy, 0);
+
+		ofstream myfile;
+		myfile.open(data, fstream::out | fstream::app);
+		myfile << label << " ";
+		for (int k = 0; k < hist.cols; k++)
+			myfile << k + 1 << ":" << hist.at<int>(0, k) << " ";
+		myfile << endl;
+		myfile.close();
+	}
+void  FaceRecognition::preprocess_image(Mat img, Mat& processed_img)
+	{
+	Mat face_img = img.clone();
+	if (face_img.channels() == 3) cvtColor(face_img, face_img, CV_BGR2GRAY);
+		//check if the face is a valid face
+		// may be by looking at the minimum size of the face (??)
+		processed_img = norm_0_255(face_img);
+	}
+int FaceRecognition::Train(Mat input_frame, string subjectname,int numSamples,int count)
+	{
+		name=subjectname;
+		if(count == 0)
+		{
+			reset(0);
+		}
+		numTrainFaces=numSamples;
+		Mat img = input_frame.clone();
+
+		if (img.empty())
+		{
+			cerr<<"Error loading image."<<endl;
+			return -2;
+		}
+		
+		resize(img, img, Size(32, 32));
+
+
+		string msg;
+		int label = 0;
+		Mat processed_img;
+		preprocess_image(img, processed_img);
+		if (processed_img.empty())
+		{
+			cerr<<"Error in Preprocessing the image"<<endl;
+			return -2;
+			
+		}
+
+			int line_count = 0;
+			ifstream f1(TRAIN_FEATURE_FILE.c_str(), ios::in);
+			string line;
+			while (std::getline(f1, line))
+			{
+				line_count++;
+			}
+			f1.close();
+			if (line_count < numTrainFaces) 
+			{
+				//generate features for the training frames;
+				Mat im = processed_img;
+				generate_features(im, TRAIN_FEATURE_FILE, 1);
+				if (line_count == numTrainFaces -1)
+				{
+					ofstream f1(TRAIN_FEATURE_FILE.c_str(), fstream::app);
+					string bk_file = "bin/backgroundSet_FR.txt";
+					ifstream ifile2(bk_file);
+					f1 << ifile2.rdbuf();
+					ifile2.close();
+					f1.close();
+					string CALL_TRAIN = "./bin/svm-train -b 1 " + TRAIN_FEATURE_FILE + " " + MODEL_FILE;
+					bool success=system(CALL_TRAIN.c_str());
+
+					return success;
+				}
+				
+			}
+			//else exit(100);
+			
+		return 0;
+	}
+	int FaceRecognition::Test(Mat input_frame, string subjectname,string FRModelFile,int numSamples,int count)
+	{
+		name=subjectname;
+		if(count == 0)
+		{
+			reset(1);
+		}
+		numTestFaces=numSamples;
+		Mat img = input_frame.clone();
+		Mat processed_img;
+		preprocess_image(img, processed_img);
+		if (processed_img.empty())
+		{
+			cerr<<"Error in Preprocessing the image"<<endl;
+			return -2;
+			
+		}
+			Mat im = processed_img;
+				 if (count < (numTestFaces-1))
+				{
+					generate_features(im, TEST_FEATURE_FILE, 1);
+					
+				}
+				else if (count == (numTestFaces - 1))
+				{
+					generate_features(im, TEST_FEATURE_FILE, 1); 				
+					string CALL_TEST = "./bin/svm-predict -b 1 -q " + TEST_FEATURE_FILE + " " + FRModelFile + " " + OUTPUT_FILE;
+					bool k=system(CALL_TEST.c_str());
+					cout << endl;
+
+				int	 result = probabilies(OUTPUT_FILE);
+				if (result == 1)
+				{
+					return 1;
+				}
+				else if (result == -1)
+				{
+					return -1;
+				}
+				else
+				{
+					return 0;
+				}
+			}
+
+	return 3;
+	}
+
+	int  FaceRecognition::probabilies(string OUTPUT_FILE)
+	{
+	try {
+		ifstream f1;
+		f1.open(OUTPUT_FILE, fstream::in);
+		if(!f1.is_open()){
+			cout<<"error opening the file" << endl;
+		}
+		string line;
+		int id;
+		const char* arr = NULL;
+		vector < pair<float, float> > probs;
+		while (!f1.eof())
+		{
+			if (f1.peek() == f1.eof())
+				break;
+			getline(f1, line);
+
+			string label, value1, value2;
+			std::stringstream ss(line);
+			ss >> label >> value1 >> value2;
+		//	cout<<"value1 "<<(value1)<<" value2 "<<value2<<endl;
+			probs.push_back(make_pair(stof(value1), stof(value2)));
+		}
+
+		f1.close();
+		probs.erase(probs.begin());
+
+		float avg_prob_0 = 0, avg_prob_1 = 0;
+		for (int i = 0; i < probs.size(); i++)
+		{
+			avg_prob_0 += probs[i].first;
+			avg_prob_1 += probs[i].second;
+		}
+		avg_prob_0 = avg_prob_0 / (float)probs.size();
+		avg_prob_1 = avg_prob_1 / (float)probs.size();
+		cout << "final avg probabilities : " << avg_prob_0 << " " << avg_prob_1 << endl;
+
+		if (avg_prob_0 > th_knwn)
+		{
+			return 1;
+		}
+		else if (avg_prob_1 > th_uknwn)
+		{
+			return -1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	catch (cv::Exception &e)
+	{
+		cout << "Exception Occured when reading probabilities from output files : " << e.what() << endl;
+		return -2;
+	}
+	catch (runtime_error &r)
+	{
+		cout << "caught runtime error : " << r.what() << endl;
+	return -2;
+	}
+	catch(std::exception &s)
+	{
+		cout<<"exception caught "<<s.what()<<endl;
+	}
+	catch (...)
+	{
+		cout << "generic exception caught in reading OUTPUT_FILE" << endl;
+			return -2;
+	}
+	}
+	Mat FaceRecognition::norm_0_255(const Mat& src) {
+		Mat dst;
+		switch (src.channels()) {
+		case 1:
+			cv::normalize(src, dst, 0, 255, NORM_MINMAX, CV_8UC1);
+			break;
+		case 3:
+			cv::normalize(src, dst, 0, 255, NORM_MINMAX, CV_8UC3);
+			break;
+		default:
+			src.copyTo(dst);
+			break;
+		}
+		return dst;
+	}
